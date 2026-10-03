@@ -27,6 +27,20 @@ It is for people who have a spreadsheet and a question but no time to write SQL 
 
 Rough cost on `gpt-5.4-mini` ($0.75 in / $4.50 out per 1M tokens): a question that works first time is one plan call and one answer call, about $0.004 to $0.008. The worst case (3 plan attempts, a 200-row answer and its retry) is about $0.03. `gpt-5.5` is roughly 7x that.
 
+## Architecture
+
+![AskCSV architecture: the browser runs the CSV through DuckDB-WASM and sends only schema and stats to Next.js routes on Vercel, which count questions in Upstash Redis before calling OpenAI](docs/architecture.svg)
+
+1. The browser loads the DuckDB-WASM bundle from jsDelivr and reads the CSV locally. The file never leaves the device.
+2. It sends the question, the table schema, column stats and 5 sample rows to `POST /api/plan`.
+3. The route counts the question in Upstash Redis before any paid call. Repair calls ride on that question and count against the follow-up cap instead.
+4. OpenAI returns SQL and a chart spec as structured output, and the server checks that the SQL is a single read-only query.
+5. The browser runs the SQL in DuckDB-WASM and sends the result rows to `POST /api/answer`.
+6. That route checks Redis for a question asked in the last 10 minutes, then OpenAI writes a short answer whose numbers are checked against the rows.
+7. `GET /api/quota` reads the same Redis counters without counting, so the composer shows what the API will allow.
+
+Why it is built this way: the OpenAI key stays on the server and the data stays in the browser, so only schema and stats cross the network. Limits are counted in Redis before the paid call, so every instance enforces the same budget. Every number in an answer is checked in code against the result rows.
+
 ## Run it
 
 ```bash

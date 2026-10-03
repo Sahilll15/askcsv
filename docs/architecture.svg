@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" font-family="Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d"><title id="t">AskCSV architecture</title><desc id="d">The browser runs the CSV through DuckDB-WASM and sends only schema and stats to Next.js routes on Vercel, which count questions in Upstash Redis before calling OpenAI.</desc><defs><marker id="a-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0969da"/></marker><marker id="a-sec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#8c959f"/></marker></defs><rect x="0.5" y="0.5" width="1199" height="639" rx="16" fill="#ffffff" stroke="#e3e6ea"/><rect x="24" y="24" width="252" height="552" rx="14" fill="#eef4ff"/>
+<text x="40" y="48" font-size="12" fill="#57606a" font-weight="600" letter-spacing="0.06em">CLIENT</text>
+<rect x="300" y="24" width="452" height="552" rx="14" fill="#f6f8fa"/>
+<text x="316" y="48" font-size="12" fill="#57606a" font-weight="600" letter-spacing="0.06em">VERCEL</text>
+<rect x="776" y="24" width="400" height="344" rx="14" fill="#f5f0ff"/>
+<text x="792" y="48" font-size="12" fill="#57606a" font-weight="600" letter-spacing="0.06em">EXTERNAL SERVICES</text>
+<rect x="776" y="384" width="400" height="192" rx="14" fill="#edf8f1"/>
+<text x="792" y="408" font-size="12" fill="#57606a" font-weight="600" letter-spacing="0.06em">DATA</text>
+<path d="M32 606 L68 606" stroke="#0969da" stroke-width="2" marker-end="url(#a-main)"/>
+<text x="78" y="610" font-size="12" fill="#57606a" text-anchor="start">Request path</text>
+<path d="M192 606 L228 606" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a-sec)"/>
+<text x="238" y="610" font-size="12" fill="#57606a" text-anchor="start">Secondary or optional path</text>
+<circle cx="430" cy="606" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="430" y="610.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<text x="448" y="610" font-size="12" fill="#57606a" text-anchor="start">Step, see the list below</text>
+<rect x="118" y="68" width="64" height="64" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<rect x="128" y="84" width="44" height="32" rx="4" fill="#ffffff" stroke="#57606a" stroke-width="1.6"/>
+<path d="M128 93 L172 93" stroke="#57606a" stroke-width="1.6"/>
+<circle cx="134" cy="88.5" r="1.6" fill="#cf222e"/>
+<circle cx="139" cy="88.5" r="1.6" fill="#bf8700"/>
+<circle cx="144" cy="88.5" r="1.6" fill="#1a7f37"/>
+<path d="M136 101 L158 101 M136 107 L164 107" stroke="#afb8c1" stroke-width="2" stroke-linecap="round"/>
+<text x="150" y="152" font-size="14" fill="#1f2328" text-anchor="middle">Browser</text>
+<text x="150" y="169" font-size="12" fill="#57606a" text-anchor="middle">React app</text>
+<rect x="40" y="186" width="172" height="136" rx="10" fill="#ffffff" stroke="#d0d7de"/>
+<text x="52" y="208" font-size="12" fill="#1f2328" text-anchor="start" font-weight="600">In the browser</text>
+<text x="52" y="227" font-size="12" fill="#57606a" text-anchor="start">CSV stays local</text>
+<text x="52" y="244" font-size="12" fill="#57606a" text-anchor="start">DuckDB-WASM profiles</text>
+<text x="52" y="261" font-size="12" fill="#57606a" text-anchor="start">it and runs the SQL</text>
+<text x="52" y="278" font-size="12" fill="#57606a" text-anchor="start">Sends schema, stats and</text>
+<text x="52" y="295" font-size="12" fill="#57606a" text-anchor="start">5 sample rows only</text>
+<text x="52" y="312" font-size="12" fill="#57606a" text-anchor="start">Chart and answer</text>
+<rect x="338" y="68" width="64" height="64" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<polygon points="370,83 390,115 350,115" fill="#000000"/>
+<text x="370" y="152" font-size="14" fill="#1f2328" text-anchor="middle">Next.js</text>
+<text x="370" y="169" font-size="12" fill="#57606a" text-anchor="middle">route handlers</text>
+<rect x="440" y="190" width="250" height="40" rx="9" fill="#ffffff" stroke="#d0d7de"/>
+<rect x="449" y="199" width="22" height="22" rx="6" fill="#ddf4ff"/>
+<text x="460" y="215" font-size="14" fill="#0969da" text-anchor="middle" font-style="italic" font-weight="700">f</text>
+<text x="480" y="215" font-size="13" fill="#1f2328" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">POST /api/plan</text>
+<text x="480" y="245" font-size="12" fill="#57606a" text-anchor="start">counts a question, guards SQL</text>
+<rect x="440" y="320" width="250" height="40" rx="9" fill="#ffffff" stroke="#d0d7de"/>
+<rect x="449" y="329" width="22" height="22" rx="6" fill="#ddf4ff"/>
+<text x="460" y="345" font-size="14" fill="#0969da" text-anchor="middle" font-style="italic" font-weight="700">f</text>
+<text x="480" y="345" font-size="13" fill="#1f2328" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">POST /api/answer</text>
+<text x="480" y="375" font-size="12" fill="#57606a" text-anchor="start">needs a live question, grounding</text>
+<rect x="440" y="450" width="250" height="40" rx="9" fill="#ffffff" stroke="#d0d7de"/>
+<rect x="449" y="459" width="22" height="22" rx="6" fill="#ddf4ff"/>
+<text x="460" y="475" font-size="14" fill="#0969da" text-anchor="middle" font-style="italic" font-weight="700">f</text>
+<text x="480" y="475" font-size="13" fill="#1f2328" text-anchor="start" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">GET /api/quota</text>
+<text x="480" y="505" font-size="12" fill="#57606a" text-anchor="start">read only, never counts</text>
+<rect x="902" y="172" width="64" height="64" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<polygon points="934,184 951.32,194.0 951.32,214.0 934,224 916.68,214.0 916.68,194.0" fill="#f5f0ff" stroke="#8250df" stroke-width="1.6"/>
+<path d="M934 194 Q936 202 944 204 Q936 206 934 214 Q932 206 924 204 Q932 202 934 194 z" fill="#8250df"/>
+<text x="934" y="256" font-size="14" fill="#1f2328" text-anchor="middle">OpenAI</text>
+<text x="934" y="273" font-size="12" fill="#57606a" text-anchor="middle">gpt-5.4-mini or gpt-5.5</text>
+<text x="934" y="289" font-size="12" fill="#57606a" text-anchor="middle">Responses API, structured output</text>
+<rect x="1064" y="68" width="64" height="64" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<path d="M1082 110 A9 9 0 0 1 1084 93 A12 12 0 0 1 1106 91 A9 9 0 0 1 1110 110 z" fill="#f5f0ff" stroke="#8250df" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M1096 96 L1096 106 M1092 102 L1096 106 L1100 102" fill="none" stroke="#8250df" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="1096" y="152" font-size="14" fill="#1f2328" text-anchor="middle">jsDelivr CDN</text>
+<text x="1096" y="169" font-size="12" fill="#57606a" text-anchor="middle">DuckDB-WASM bundle</text>
+<rect x="944" y="424" width="64" height="64" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<path d="M956 441 L956 469 A20 6 0 0 0 996 469 L996 441" fill="#d1f0dc" stroke="#1a7f37" stroke-width="1.6"/>
+<ellipse cx="976" cy="441" rx="20" ry="6" fill="#eafaf0" stroke="#1a7f37" stroke-width="1.6"/>
+<path d="M956 451 A20 6 0 0 0 996 451 M956 460 A20 6 0 0 0 996 460" fill="none" stroke="#1a7f37" stroke-width="1.2"/>
+<text x="976" y="508" font-size="14" fill="#1f2328" text-anchor="middle">Upstash Redis</text>
+<text x="976" y="525" font-size="12" fill="#57606a" text-anchor="middle">rate limits, budgets</text>
+<path d="M1064 100 L1040 100 L1040 57 L150 57 L150 64" fill="none" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" marker-end="url(#a-sec)"/>
+<circle cx="600" cy="57" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="600" y="61.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+<path d="M182 92 L240 92 L240 210 L436 210" fill="none" stroke="#0969da" stroke-width="2" stroke-linejoin="round" marker-end="url(#a-main)"/>
+<circle cx="330" cy="210" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="330" y="214.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+<path d="M690 222 L716 222 L716 440 L940 440" fill="none" stroke="#0969da" stroke-width="2" stroke-linejoin="round" marker-end="url(#a-main)"/>
+<circle cx="716" cy="390" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="716" y="394.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+<path d="M690 204 L898 204" fill="none" stroke="#0969da" stroke-width="2" stroke-linejoin="round" marker-end="url(#a-main)"/>
+<circle cx="790" cy="204" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="790" y="208.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+<path d="M182 112 L226 112 L226 340 L436 340" fill="none" stroke="#0969da" stroke-width="2" stroke-linejoin="round" marker-end="url(#a-main)"/>
+<circle cx="330" cy="340" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="330" y="344.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+<path d="M690 334 L800 334 L800 222 L898 222" fill="none" stroke="#0969da" stroke-width="2" stroke-linejoin="round" marker-end="url(#a-main)"/>
+<circle cx="800" cy="280" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="800" y="284.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+<path d="M690 350 L700 350 L700 456 L940 456" fill="none" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" marker-end="url(#a-sec)"/>
+<path d="M126 316 L126 470 L436 470" fill="none" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" marker-end="url(#a-sec)"/>
+<circle cx="330" cy="470" r="11" fill="#0969da" stroke="#ffffff" stroke-width="2"/>
+<text x="330" y="474.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+<path d="M690 470 L940 472" fill="none" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" marker-end="url(#a-sec)"/></svg>
