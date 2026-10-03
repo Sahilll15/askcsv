@@ -5,6 +5,8 @@ import { ArrowUp, Database, Paperclip } from './Icons';
 
 type Props = {
   disabled: boolean;
+  /** Hourly question budget is spent: the text box itself is disabled, not just Send. */
+  locked?: boolean;
   placeholder: string;
   datasetLabel: string | null;
   onSend: (q: string) => void;
@@ -12,7 +14,7 @@ type Props = {
   onDataset: () => void;
 };
 
-export function Composer({ disabled, placeholder, datasetLabel, onSend, onPickFile, onDataset }: Props) {
+export function Composer({ disabled, locked = false, placeholder, datasetLabel, onSend, onPickFile, onDataset }: Props) {
   const [text, setText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const send = () => {
@@ -27,12 +29,13 @@ export function Composer({ disabled, placeholder, datasetLabel, onSend, onPickFi
         e.preventDefault();
         send();
       }}
-      className="rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_-12px_rgba(15,15,20,0.12)] transition focus-within:border-line-strong"
+      className={`rounded-2xl border border-line p-2 shadow-[0_8px_30px_-12px_rgba(15,15,20,0.12)] transition focus-within:border-line-strong ${locked ? 'bg-sunk' : 'bg-white'}`}
     >
       <label htmlFor="question" className="sr-only">Ask a question about your data</label>
       <textarea
         id="question"
         value={text}
+        disabled={locked}
         maxLength={500}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -43,7 +46,7 @@ export function Composer({ disabled, placeholder, datasetLabel, onSend, onPickFi
         }}
         rows={Math.min(5, Math.max(1, text.split('\n').length))}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-2 py-1.5 text-[14.5px] outline-none placeholder:text-ink-faint"
+        className="block w-full resize-none bg-transparent px-2 py-1.5 text-[14.5px] outline-none placeholder:text-ink-faint disabled:cursor-not-allowed"
       />
       <div className="mt-1 flex items-center gap-1">
         <button type="button" onClick={onDataset} className="flex max-w-[60%] items-center gap-1.5 truncate rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-soft hover:bg-hover hover:text-ink">

@@ -3,7 +3,7 @@ import { AnswerRequestSchema, AnswerSchema, type AnswerRequest, type AnswerRespo
 import { checkGrounding } from '../../../lib/grounding';
 import { readJson } from '../../server/http';
 import { addUsage, openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
-import { check, tooMany } from '../../server/ratelimit';
+import { clientIp, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 256 * 1024;
 
@@ -35,8 +35,8 @@ export async function POST(req: Request) {
   const body = await readJson(req, MAX_BYTES, AnswerRequestSchema);
   if (body instanceof Response) return body;
 
-  const gate = check(req, 'answer');
-  if (!gate.ok) return tooMany(gate.retryAfter);
+  const gate = await quota.followup(clientIp(req));
+  if (!gate.ok) return limited(gate);
 
   const model = resolveModel(body.model);
   const ask = (feedback?: string[]) =>
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     }
     if (!answer) return Response.json({ error: 'The model returned an empty answer.' }, { status: 502 });
 
-    const result: AnswerResponse = { answer, grounding, retried, model, usage };
+    const result: AnswerResponse = { answer, grounding, retried, model, usage, quota: gate.quota };
     return Response.json(result);
   } catch (err) {
     return upstreamError(err);

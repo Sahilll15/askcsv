@@ -3,7 +3,7 @@ import { PlanRequestSchema, PlanSchema, type PlanRequest, type PlanResponse } fr
 import { guardSql } from '../../../lib/sqlGuard';
 import { readJson } from '../../server/http';
 import { openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
-import { check, tooMany } from '../../server/ratelimit';
+import { clientIp, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 64 * 1024;
 
@@ -53,8 +53,10 @@ export async function POST(req: Request) {
   const body = await readJson(req, MAX_BYTES, PlanRequestSchema);
   if (body instanceof Response) return body;
 
-  const gate = check(req, 'plan');
-  if (!gate.ok) return tooMany(gate.retryAfter);
+  // Only the first plan call of a question counts; repairs ride on it.
+  const ip = clientIp(req);
+  const gate = body.attempts.length ? await quota.followup(ip) : await quota.question(ip);
+  if (!gate.ok) return limited(gate);
 
   const model = resolveModel(body.model);
   try {
@@ -77,6 +79,7 @@ export async function POST(req: Request) {
       guard: guard.ok ? null : guard.reason,
       model,
       usage: usageOf(model, response.usage),
+      quota: gate.quota,
     };
     return Response.json(result);
   } catch (err) {

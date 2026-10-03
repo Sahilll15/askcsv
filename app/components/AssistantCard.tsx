@@ -8,6 +8,8 @@ import { Alert, Check, Download, Logo, Play, Refresh } from './Icons';
 type Props = {
   msg: AssistantMessage;
   busy: boolean;
+  /** Hourly limit reached: every action that could reach the API is off. */
+  locked: boolean;
   canRun: boolean;
   onRunSql: (sql: string) => Promise<string | null>;
   onExplain: () => void;
@@ -74,11 +76,12 @@ function Trace({ msg }: { msg: AssistantMessage }) {
   );
 }
 
-function SqlEditor({ msg, busy, canRun, onRunSql }: Pick<Props, 'msg' | 'busy' | 'canRun' | 'onRunSql'>) {
+function SqlEditor({ msg, busy, locked, canRun, onRunSql }: Pick<Props, 'msg' | 'busy' | 'locked' | 'canRun' | 'onRunSql'>) {
   const [draft, setDraft] = useState(msg.sql ?? '');
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const run = async () => {
+    if (locked) return;
     setRunning(true);
     setError(await onRunSql(draft));
     setRunning(false);
@@ -102,7 +105,7 @@ function SqlEditor({ msg, busy, canRun, onRunSql }: Pick<Props, 'msg' | 'busy' |
         <button
           type="button"
           onClick={run}
-          disabled={busy || running || !canRun || !draft.trim()}
+          disabled={busy || locked || running || !canRun || !draft.trim()}
           className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-[13px] font-medium text-white transition hover:bg-black disabled:opacity-40"
         >
           <Play size={12} /> {running ? 'Running' : 'Run query'}
@@ -113,14 +116,14 @@ function SqlEditor({ msg, busy, canRun, onRunSql }: Pick<Props, 'msg' | 'busy' |
           </button>
         )}
         <span className="text-[12px] text-ink-faint">
-          {canRun ? 'Read-only: SELECT and WITH only. Cmd/Ctrl + Enter runs it.' : 'Load this dataset again to run queries.'}
+          {locked ? 'Paused until the hourly limit resets.' : canRun ? 'Read-only: SELECT and WITH only. Cmd/Ctrl + Enter runs it.' : 'Load this dataset again to run queries.'}
         </span>
       </div>
     </div>
   );
 }
 
-export function AssistantCard({ msg, busy, canRun, onRunSql, onExplain, onRetry }: Props) {
+export function AssistantCard({ msg, busy, locked, canRun, onRunSql, onExplain, onRetry }: Props) {
   const [tab, setTab] = useState<'chart' | 'table' | 'sql'>('chart');
   const pending = msg.status === 'planning' || msg.status === 'running' || msg.status === 'answering';
   const hasResult = !!(msg.chart && msg.columns && msg.rows);
@@ -173,7 +176,7 @@ export function AssistantCard({ msg, busy, canRun, onRunSql, onExplain, onRetry 
             </header>
             {tab === 'chart' && <Chart spec={msg.chart!} columns={msg.columns!} rows={msg.rows!} />}
             {tab === 'table' && <DataTable columns={msg.columns!} rows={msg.rows!} />}
-            {tab === 'sql' && <SqlEditor key={msg.sql} msg={msg} busy={busy} canRun={canRun} onRunSql={onRunSql} />}
+            {tab === 'sql' && <SqlEditor key={msg.sql} msg={msg} busy={busy} locked={locked} canRun={canRun} onRunSql={onRunSql} />}
             <footer className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-ink-faint">
               <span>
                 {(msg.totalRows ?? msg.rows!.length).toLocaleString()} {msg.totalRows === 1 ? 'row' : 'rows'}
@@ -197,7 +200,7 @@ export function AssistantCard({ msg, busy, canRun, onRunSql, onExplain, onRetry 
             {msg.answerStale ? (
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-soft">
                 You edited the SQL, so this summary describes the earlier result.
-                <button type="button" onClick={onExplain} disabled={busy} className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 font-medium text-ink hover:bg-hover disabled:opacity-40">
+                <button type="button" onClick={onExplain} disabled={busy || locked} className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 font-medium text-ink hover:bg-hover disabled:opacity-40">
                   <Refresh size={12} /> Explain again
                 </button>
               </div>
@@ -222,7 +225,7 @@ export function AssistantCard({ msg, busy, canRun, onRunSql, onExplain, onRetry 
         )}
 
         {!msg.answer && hasResult && msg.status === 'done' && (
-          <button type="button" onClick={onExplain} disabled={busy} className="mt-3 inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-[12.5px] font-medium hover:bg-hover disabled:opacity-40">
+          <button type="button" onClick={onExplain} disabled={busy || locked} className="mt-3 inline-flex items-center gap-1 rounded-md border border-line px-2.5 py-1 text-[12.5px] font-medium hover:bg-hover disabled:opacity-40">
             <Refresh size={12} /> Explain this result
           </button>
         )}
@@ -237,7 +240,7 @@ export function AssistantCard({ msg, busy, canRun, onRunSql, onExplain, onRetry 
         {msg.status === 'error' && (
           <div role="alert" className="mt-1 rounded-xl border border-bad/20 bg-bad-bg px-3.5 py-3 text-[13.5px] text-bad">
             <p>{msg.error}</p>
-            <button type="button" onClick={onRetry} disabled={busy || !canRun} className="mt-2 inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-[12.5px] font-medium text-ink shadow-sm hover:bg-hover disabled:opacity-40">
+            <button type="button" onClick={onRetry} disabled={busy || locked || !canRun} className="mt-2 inline-flex items-center gap-1 rounded-md bg-white px-2.5 py-1 text-[12.5px] font-medium text-ink shadow-sm hover:bg-hover disabled:opacity-40">
               <Refresh size={12} /> Try again
             </button>
           </div>

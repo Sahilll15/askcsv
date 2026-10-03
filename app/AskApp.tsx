@@ -7,8 +7,10 @@ import {
   MAX_ATTEMPTS,
   MODELS,
   type AnswerResponse,
+  type LimitBody,
   type PlanResponse,
   type Profile,
+  type Quota,
   type Usage,
 } from '../lib/api';
 import { validateChart } from '../lib/chartSpec';
@@ -26,7 +28,7 @@ import {
 } from '../lib/store';
 import { AssistantCard } from './components/AssistantCard';
 import { Composer } from './components/Composer';
-import { Close, Dots, Lock, Menu, Trash, Upload } from './components/Icons';
+import { Clock, Close, Dots, Lock, Menu, Trash, Upload } from './components/Icons';
 import { ModelPicker } from './components/ModelPicker';
 import { Sidebar } from './components/Sidebar';
 import { Welcome } from './components/Welcome';
@@ -37,6 +39,17 @@ const MODEL_KEY = 'askcsv:model';
 // Wrapped so the React compiler lint does not mistake handler timing for render-time impurity.
 const clock = () => Date.now();
 const ZERO: Usage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+const CLEARED: Partial<AssistantMessage> = {
+  answer: undefined,
+  grounding: undefined,
+  chart: undefined,
+  rows: undefined,
+  columns: undefined,
+  totalRows: undefined,
+  intent: undefined,
+  sql: undefined,
+  note: undefined,
+};
 
 type Loaded = { ref: DatasetRef; profile: Profile };
 
@@ -51,11 +64,39 @@ const addUsage = (a: Usage, b: Usage): Usage => ({
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^Error:\s*/, '').slice(0, 700);
 
+class LimitError extends Error {
+  body: LimitBody;
+  constructor(body: LimitBody) {
+    super(body.error);
+    this.body = body;
+  }
+}
+
+const NOT_ANSWERED = 'Not answered: hourly limit reached.';
+
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 429 && typeof data.resetAt === 'number') throw new LimitError(data as LimitBody);
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status}).`);
   return data as T;
+}
+
+async function fetchQuota(): Promise<Quota | null> {
+  try {
+    const res = await fetch('/api/quota', { cache: 'no-store' });
+    return res.ok ? ((await res.json()) as Quota) : null;
+  } catch {
+    return null;
+  }
+}
+
+const isQuota = (q: unknown): q is Quota => !!q && typeof (q as Quota).remaining === 'number' && typeof (q as Quota).resetAt === 'number';
+
+function untilText(resetAt: number, now: number) {
+  const secs = Math.max(0, Math.ceil((resetAt - now) / 1000));
+  if (secs < 60) return `${secs} s`;
+  return `${Math.ceil(secs / 60)} min`;
 }
 
 function readModel() {
@@ -89,6 +130,8 @@ export default function AskApp() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [about, setAbout] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [quota, setQuota] = useState<Quota | null>(null);
+  const [now, setNow] = useState(clock);
   const scrollRef = useRef<HTMLDivElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
 
@@ -96,8 +139,42 @@ export default function AskApp() {
   const dataset = active?.dataset ?? loaded?.ref ?? null;
   const ready = !!(loaded && dataset && sameDataset(loaded.ref, dataset));
   const msgCount = active?.messages.length ?? 0;
+  const locked = !!quota && quota.remaining === 0 && now < quota.resetAt;
 
   useEffect(() => saveConversations(conversations), [conversations]);
+
+  useEffect(() => {
+    let live = true;
+    fetchQuota().then((q) => live && q && setQuota(q));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const lockedUntil = quota && quota.remaining === 0 ? quota.resetAt : null;
+  useEffect(() => {
+    if (lockedUntil === null) return;
+    const id = setInterval(() => {
+      const t = clock();
+      setNow(t);
+      if (t >= lockedUntil) {
+        clearInterval(id);
+        fetchQuota().then((q) => q && setQuota(q));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lockedUntil]);
+
+  const syncQuota = (q: unknown) => {
+    setNow(clock());
+    if (isQuota(q)) setQuota({ limit: q.limit, remaining: q.remaining, resetAt: q.resetAt });
+  };
+
+  // A 429 for a spent budget locks the UI; one for a stale follow-up only needs a fresh question.
+  const onLimit = (e: LimitError) => {
+    if (e.body.reason === 'no_live_question') fetchQuota().then((q) => q && syncQuota(q));
+    else syncQuota({ ...e.body, remaining: 0 });
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -195,6 +272,7 @@ export default function AskApp() {
       totalRows: m.totalRows ?? rows.length,
     });
     // Re-check on the client too: the server is not the only thing we trust less than the data.
+    syncQuota(res.quota);
     const grounding = checkGrounding(res.answer, rows, [m.question]);
     return { answer: res.answer, grounding, usage: res.usage };
   }
@@ -205,7 +283,8 @@ export default function AskApp() {
     const t0 = clock();
     const attempts: Attempt[] = [];
     let usage = ZERO;
-    patch(convId, msgId, { status: 'planning', attempts: [], error: undefined, answer: undefined, grounding: undefined, chart: undefined, rows: undefined, columns: undefined, intent: undefined });
+    let limitedBy: LimitError | null = null;
+    patch(convId, msgId, { ...CLEARED, status: 'planning', attempts: [], error: undefined });
     try {
       for (let i = 0; i < MAX_ATTEMPTS; i++) {
         patch(convId, msgId, { status: 'planning', attempts: [...attempts] });
@@ -216,6 +295,7 @@ export default function AskApp() {
           history,
           attempts: attempts.map((a) => ({ sql: a.sql, error: a.error ?? '' })),
         });
+        syncQuota(plan.quota);
         usage = addUsage(usage, plan.usage);
         patch(convId, msgId, { status: 'running', intent: plan.intent, usage, model: plan.model });
 
@@ -241,6 +321,7 @@ export default function AskApp() {
           usage = addUsage(usage, a.usage);
           patch(convId, msgId, { status: 'done', answer: a.answer, grounding: a.grounding, usage, ms: clock() - t0 });
         } catch (e) {
+          if (e instanceof LimitError) throw e;
           patch(convId, msgId, { status: 'done', usage, ms: clock() - t0, note: `The chart is ready but the summary failed: ${message(e)}` });
         }
         return;
@@ -253,14 +334,22 @@ export default function AskApp() {
         error: `I could not get a working query in ${MAX_ATTEMPTS} tries. Open "How I got this" to see each attempt, or rephrase the question.`,
       });
     } catch (e) {
-      patch(convId, msgId, { status: 'error', attempts: [...attempts], usage, error: message(e) });
+      if (e instanceof LimitError) {
+        limitedBy = e;
+        onLimit(e);
+        patch(convId, msgId, { ...CLEARED, status: 'error', attempts: [...attempts], usage, error: NOT_ANSWERED });
+      } else {
+        patch(convId, msgId, { status: 'error', attempts: [...attempts], usage, error: message(e) });
+      }
     } finally {
       setBusy(false);
+      // After a 429 the refusal wins: this instance's count may not have seen the spend.
+      if (!limitedBy) fetchQuota().then((q) => q && syncQuota(q));
     }
   }
 
   function ask(question: string) {
-    if (!loaded || busy || !ready) return;
+    if (!loaded || busy || !ready || locked) return;
     let convId = active?.id;
     const history = (active?.messages ?? [])
       .filter((m): m is AssistantMessage => m.role === 'assistant' && m.status === 'done' && !!m.sql)
@@ -283,6 +372,7 @@ export default function AskApp() {
 
   async function runSql(msg: AssistantMessage, sql: string): Promise<string | null> {
     if (!active) return 'No conversation.';
+    if (locked) return NOT_ANSWERED;
     try {
       const r = await runQuery(sql);
       const rows = r.rows.slice(0, KEPT_ROWS);
@@ -305,22 +395,27 @@ export default function AskApp() {
   }
 
   async function reExplain(msg: AssistantMessage) {
-    if (!active || busy) return;
+    if (!active || busy || locked) return;
     const convId = active.id;
+    let limitedBy: LimitError | null = null;
     setBusy(true);
     patch(convId, msg.id, { status: 'answering' });
     try {
       const a = await explain(msg);
       patch(convId, msg.id, (m) => ({ status: 'done', answer: a.answer, grounding: a.grounding, answerStale: false, note: undefined, usage: addUsage(m.usage ?? ZERO, a.usage) }));
     } catch (e) {
-      patch(convId, msg.id, { status: 'done', note: `The summary failed: ${message(e)}` });
+      limitedBy = e instanceof LimitError ? e : null;
+      if (limitedBy) onLimit(limitedBy);
+      const note = limitedBy && limitedBy.body.reason !== 'no_live_question' ? NOT_ANSWERED : `The summary failed: ${message(e)}`;
+      patch(convId, msg.id, { status: 'done', note });
     } finally {
       setBusy(false);
+      if (!limitedBy) fetchQuota().then((q) => q && syncQuota(q));
     }
   }
 
   function retry(msg: AssistantMessage) {
-    if (!active || busy || !ready) return;
+    if (!active || busy || !ready || locked) return;
     const idx = active.messages.findIndex((m) => m.id === msg.id);
     const history = active.messages
       .slice(0, idx)
@@ -345,7 +440,11 @@ export default function AskApp() {
   const sample = loaded?.ref.kind === 'sample' ? SAMPLES.find((s) => loaded.ref.kind === 'sample' && s.id === loaded.ref.id) : null;
   const suggestions = ready && loaded && msgCount === 0 ? (sample ? sample.questions : genericSuggestions(loaded.profile)) : [];
   const datasetLabel = dataset ? `${dataset.table}${ready && loaded ? ` · ${loaded.profile.rowCount.toLocaleString()} rows` : ''}` : null;
-  const placeholder = !dataset ? 'Pick a sample or drop a CSV to start' : !ready ? (loading ? 'Loading data...' : 'Load the dataset to ask more') : `Ask about ${dataset.table}...`;
+  const resetLabel = quota ? new Date(quota.resetAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+  const placeholder = locked
+    ? `Hourly limit reached. Questions resume at ${resetLabel}.`
+    : !dataset
+      ? 'Pick a sample or drop a CSV to start' : !ready ? (loading ? 'Loading data...' : 'Load the dataset to ask more') : `Ask about ${dataset.table}...`;
 
   return (
     <div className="flex h-dvh md:gap-1 md:p-2">
@@ -436,6 +535,7 @@ export default function AskApp() {
                       <AssistantCard
                         msg={m}
                         busy={busy}
+                        locked={locked}
                         canRun={ready}
                         onRunSql={(sql) => runSql(m, sql)}
                         onExplain={() => reExplain(m)}
@@ -468,19 +568,33 @@ export default function AskApp() {
                 )}
               </div>
             )}
+            {locked && quota && (
+              <div role="status" aria-live="polite" className="mb-2 flex animate-rise items-start gap-2 rounded-xl border border-warn/30 bg-warn-bg px-3.5 py-2.5 text-[13px] text-warn">
+                <Clock size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  You&apos;ve reached the hourly limit for this demo. It resets at <strong className="font-semibold">{resetLabel}</strong> (in {untilText(quota.resetAt, now)}).
+                </span>
+              </div>
+            )}
             {suggestions.length > 0 && (
               <ul className="mb-2 flex gap-1.5 overflow-x-auto pb-1 scroll-thin sm:flex-wrap" aria-label="Suggested questions">
                 {suggestions.map((q, i) => (
                   <li key={q} className="shrink-0 animate-rise" style={{ animationDelay: `${i * 50}ms` }}>
-                    <button type="button" onClick={() => ask(q)} disabled={busy} className="rounded-full border border-line bg-white px-3 py-1.5 text-[12.5px] text-ink-soft transition hover:border-line-strong hover:text-ink disabled:opacity-40">
+                    <button type="button" onClick={() => ask(q)} disabled={busy || locked} className="rounded-full border border-line bg-white px-3 py-1.5 text-[12.5px] text-ink-soft transition hover:border-line-strong hover:text-ink disabled:opacity-40">
                       {q}
                     </button>
                   </li>
                 ))}
               </ul>
             )}
+            {quota && !locked && (
+              <p className="mb-1.5 px-1 text-right text-[11.5px] text-ink-faint" aria-live="polite">
+                {quota.remaining} of {quota.limit} questions left this hour
+              </p>
+            )}
             <Composer
-              disabled={!ready || busy}
+              disabled={!ready || busy || locked}
+              locked={locked}
               placeholder={placeholder}
               datasetLabel={datasetLabel}
               onSend={ask}

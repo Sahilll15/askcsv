@@ -60,5 +60,9 @@ export const AnswerSchema = z.object({
 
 export type Usage = { inputTokens: number; outputTokens: number; costUsd: number };
 export type Grounding = { ok: boolean; checked: number; unsupported: string[] };
-export type PlanResponse = Plan & { model: string; usage: Usage };
-export type AnswerResponse = { answer: string; grounding: Grounding; retried: boolean; model: string; usage: Usage };
+/** Hourly question budget for the caller. resetAt is epoch ms. */
+export type Quota = { limit: number; remaining: number; resetAt: number };
+export type PlanResponse = Plan & { model: string; usage: Usage; quota: Quota };
+export type AnswerResponse = { answer: string; grounding: Grounding; retried: boolean; model: string; usage: Usage; quota: Quota };
+/** Body of every 429 from /api/plan and /api/answer. */
+export type LimitBody = Quota & { error: string; reason: 'questions' | 'no_live_question'; remaining: 0 };
