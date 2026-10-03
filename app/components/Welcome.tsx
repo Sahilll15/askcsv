@@ -1,29 +1,20 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { SAMPLES } from '../../lib/samples';
-import { Lock, Logo, Upload } from './Icons';
+import { Upload } from './Icons';
 
 const TINTS = ['from-[#eef0ff] to-[#f6f3ff]', 'from-[#eaf7f4] to-[#f3fbf9]', 'from-[#fdf0f9] to-[#fff6ee]'];
 
-export function Welcome({ loading, onSample, onFile }: { loading: string | null; onSample: (id: string) => void; onFile: (f: File) => void }) {
+type Props = { loading: string | null; onSample: (id: string) => void; onFile: (f: File) => void; intro: ReactNode; note: ReactNode };
+
+// No entry animation: the server shell renders this same markup, so a replay on swap would flash.
+export function Welcome({ loading, onSample, onFile, intro, note }: Props) {
   const [over, setOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="animate-rise">
-      <div className="flex gap-3">
-        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line bg-white">
-          <Logo size={16} />
-        </div>
-        <p className="max-w-lg rounded-2xl bg-sunk px-4 py-3 text-[14.5px] leading-relaxed">
-          Hi, I am AskCSV. Give me a spreadsheet and ask about it in plain English. I write the SQL, run it in your browser, chart the result, and tell you what it says.
-        </p>
-      </div>
-
-      <h1 className="mt-10 font-display text-[40px] leading-[1.05] tracking-tight sm:text-5xl">
-        <span className="sr-only">AskCSV, ask questions about a CSV in plain English: </span>
-        Ask your data <em className="text-accent">anything.</em>
-      </h1>
+    <div>
+      {intro}
 
       <div
         onDragOver={(e) => {
@@ -89,12 +80,7 @@ export function Welcome({ loading, onSample, onFile }: { loading: string | null;
         </p>
       )}
 
-      <p className="mt-8 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink-faint">
-        <Lock size={14} className="mt-0.5 shrink-0" />
-        <span>
-          Your file is loaded into DuckDB inside this tab and is never uploaded. The model only sees column names, summary stats, 5 sample rows, and the rows your query returns (at most 200).
-        </span>
-      </p>
+      {note}
     </div>
   );
 }

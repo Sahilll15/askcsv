@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   DEFAULT_MODEL,
   MAX_ANSWER_ROWS,
@@ -28,7 +28,8 @@ import {
 } from '../lib/store';
 import { AssistantCard } from './components/AssistantCard';
 import { Composer } from './components/Composer';
-import { Clock, Close, Dots, Lock, Menu, Trash, Upload } from './components/Icons';
+import { FinePrint } from './components/FinePrint';
+import { Clock, Close, Dots, Menu, Trash, Upload } from './components/Icons';
 import { ModelPicker } from './components/ModelPicker';
 import { Sidebar } from './components/Sidebar';
 import { Welcome } from './components/Welcome';
@@ -119,7 +120,7 @@ function genericSuggestions(profile: Profile) {
   return out;
 }
 
-export default function AskApp() {
+export default function AskApp({ intro, note }: { intro: ReactNode; note: ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>(() => loadConversations());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -176,7 +177,9 @@ export default function AskApp() {
     else syncQuota({ ...e.body, remaining: 0 });
   };
 
+  // With no messages the welcome block must stay at the top, so only follow the thread once it has content.
   useEffect(() => {
+    if (msgCount === 0) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [msgCount, activeId]);
 
@@ -505,7 +508,7 @@ export default function AskApp() {
               </div>
             )}
 
-            {!active && !loaded && <Welcome loading={loading} onSample={pickSample} onFile={pickFile} />}
+            {!active && !loaded && <Welcome loading={loading} onSample={pickSample} onFile={pickFile} intro={intro} note={note} />}
 
             {!active && loaded && (
               <div className="animate-rise">
@@ -605,9 +608,7 @@ export default function AskApp() {
               onPickFile={pickFile}
               onDataset={newChat}
             />
-            <p className="mt-2 flex items-center justify-center gap-1.5 text-center text-[11px] text-ink-faint">
-              <Lock size={11} /> Your file stays in this browser.<span className="hidden sm:inline"> Answers can be wrong, so check the SQL.</span>
-            </p>
+            <FinePrint />
           </div>
         </div>
       </main>
