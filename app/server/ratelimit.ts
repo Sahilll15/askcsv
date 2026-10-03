@@ -1,3 +1,4 @@
+import { Redis } from '@upstash/redis';
 import type { Quota } from '../../lib/api';
 
 const HOUR = 60 * 60 * 1000;
@@ -47,7 +48,7 @@ export function clientIp(req: Request) {
   return last ? normalizeIp(last) : 'unknown';
 }
 
-/** Sliding-window hit log. A shared store (e.g. Upstash Redis sorted sets) can replace the in-memory one. */
+/** Hit log behind the quota. Redis in production, process memory when Redis is not configured. */
 export interface HitStore {
   /** Hits newer than windowMs, oldest first. Records nothing. */
   hits(key: string, windowMs: number, now: number): Promise<number[]>;
@@ -95,13 +96,79 @@ export function createMemoryStore(maxKeys = 10_000): HitStore & { size(): number
   };
 }
 
+/** The subset of the Upstash client the store uses, so tests can pass a fake. */
+export type RedisLike = { eval(script: string, keys: string[], args: (string | number)[]): Promise<unknown> };
+
+/** Thrown when Redis is configured but a call failed. Routes must refuse rather than run unmetered. */
+export class LimiterUnavailable extends Error {
+  constructor(cause: unknown) {
+    super('rate limiter unavailable', { cause });
+  }
+}
+
+// KEYS[1] list of hit times; ARGV limit, windowMs, now. The first hit starts the window and sets the expiry;
+// a stale window is dropped first, and nothing is added once the limit is reached.
+export const TAKE_SCRIPT = `
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local first = redis.call('LINDEX', KEYS[1], 0)
+if first and now - tonumber(first) >= window then redis.call('DEL', KEYS[1]) end
+local n = redis.call('LLEN', KEYS[1])
+local ok = 0
+if n < limit then
+  redis.call('RPUSH', KEYS[1], ARGV[3])
+  ok = 1
+  if n == 0 then redis.call('PEXPIRE', KEYS[1], window) end
+end
+return {ok, redis.call('LRANGE', KEYS[1], 0, -1)}`;
+
+export const HITS_SCRIPT = `return redis.call('LRANGE', KEYS[1], 0, -1)`;
+
+/**
+ * Fixed-window hit log in Redis under `rl:<app>:<bucket>:<client>`. The window opens on the first counted
+ * hit and the whole log expires with it, so hits[0] + windowMs is the reset time.
+ */
+export function createRedisStore(redis: RedisLike, app = 'askcsv'): HitStore {
+  const key = (k: string) => `rl:${app}:${k}`;
+  const live = (raw: unknown, windowMs: number, now: number) => {
+    const hits = (Array.isArray(raw) ? raw : []).map(Number).filter(Number.isFinite);
+    return hits.length && now - hits[0] >= windowMs ? [] : hits;
+  };
+  const call = async (script: string, k: string, args: (string | number)[]) => {
+    try {
+      return await redis.eval(script, [key(k)], args);
+    } catch (err) {
+      throw new LimiterUnavailable(err);
+    }
+  };
+  return {
+    async hits(k, windowMs, now) {
+      return live(await call(HITS_SCRIPT, k, []), windowMs, now);
+    },
+    async take(k, limit, windowMs, now) {
+      const out = await call(TAKE_SCRIPT, k, [limit, windowMs, now]);
+      if (!Array.isArray(out)) throw new LimiterUnavailable(new Error('unexpected reply'));
+      return { ok: Number(out[0]) === 1, hits: live(out[1], windowMs, now) };
+    },
+  };
+}
+
+/** Upstash client from KV_REST_API_URL / KV_REST_API_TOKEN, or null to fall back to memory. */
+export function redisFromEnv(): RedisLike | null {
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  return new Redis({ url, token, retry: { retries: 2, backoff: (n) => 100 * 2 ** n } });
+}
+
 export type QuotaConfig = { questions: number; followups: number; windowMs: number; liveMs: number };
 export type LimitReason = 'questions' | 'no_live_question';
 export type Gate = { ok: true; quota: Quota } | { ok: false; reason: LimitReason; quota: Quota; resetAt: number };
 
 export function createQuota(store: HitStore, cfg: QuotaConfig) {
-  const qKey = (ip: string) => `q:${ip}`;
-  const fKey = (ip: string) => `f:${ip}`;
+  const qKey = (ip: string) => `question:${ip}`;
+  const fKey = (ip: string) => `followup:${ip}`;
   const resetOf = (hits: number[], now: number) => (hits[0] ?? now) + cfg.windowMs;
 
   /** Questions left as the client should show them. Spent follow-ups also block new questions. */
@@ -149,7 +216,26 @@ export const CONFIG: QuotaConfig = {
   liveMs: Math.min(LIVE_MS, windowMs),
 };
 
-export const quota = createQuota(createMemoryStore(), CONFIG);
+const redis = redisFromEnv();
+// Local runs against the shared database set this so they never spend production's counters.
+export const quota = createQuota(redis ? createRedisStore(redis, process.env.RATE_LIMIT_NAMESPACE || 'askcsv') : createMemoryStore(), CONFIG);
+
+export function limiterBusy() {
+  return Response.json(
+    { error: 'The service is busy, try again in a minute.', reason: 'limiter_unavailable' },
+    { status: 503, headers: { 'retry-after': '60', 'cache-control': 'no-store' } },
+  );
+}
+
+/** Runs a quota check, mapping an unreachable Redis to a 503. */
+export async function gated<T>(check: () => Promise<T>): Promise<T | Response> {
+  try {
+    return await check();
+  } catch (err) {
+    if (err instanceof LimiterUnavailable) return limiterBusy();
+    throw err;
+  }
+}
 
 const MESSAGES: Record<LimitReason, string> = {
   questions: "You've reached the hourly limit for this demo. It runs on my own API credits, so it allows a handful of questions per hour.",

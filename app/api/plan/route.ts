@@ -3,7 +3,7 @@ import { PlanRequestSchema, PlanSchema, type PlanRequest, type PlanResponse } fr
 import { guardSql } from '../../../lib/sqlGuard';
 import { readJson } from '../../server/http';
 import { openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
-import { clientIp, limited, quota } from '../../server/ratelimit';
+import { clientIp, gated, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 64 * 1024;
 
@@ -55,7 +55,8 @@ export async function POST(req: Request) {
 
   // Only the first plan call of a question counts; repairs ride on it.
   const ip = clientIp(req);
-  const gate = body.attempts.length ? await quota.followup(ip) : await quota.question(ip);
+  const gate = await gated(() => (body.attempts.length ? quota.followup(ip) : quota.question(ip)));
+  if (gate instanceof Response) return gate;
   if (!gate.ok) return limited(gate);
 
   const model = resolveModel(body.model);

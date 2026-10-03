@@ -3,7 +3,7 @@ import { AnswerRequestSchema, AnswerSchema, type AnswerRequest, type AnswerRespo
 import { checkGrounding } from '../../../lib/grounding';
 import { readJson } from '../../server/http';
 import { addUsage, openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
-import { clientIp, limited, quota } from '../../server/ratelimit';
+import { clientIp, gated, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 256 * 1024;
 
@@ -35,7 +35,8 @@ export async function POST(req: Request) {
   const body = await readJson(req, MAX_BYTES, AnswerRequestSchema);
   if (body instanceof Response) return body;
 
-  const gate = await quota.followup(clientIp(req));
+  const gate = await gated(() => quota.followup(clientIp(req)));
+  if (gate instanceof Response) return gate;
   if (!gate.ok) return limited(gate);
 
   const model = resolveModel(body.model);
