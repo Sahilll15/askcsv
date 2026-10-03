@@ -21,6 +21,7 @@ export function Welcome({ loading, onSample, onFile }: { loading: string | null;
       </div>
 
       <h1 className="mt-10 font-display text-[40px] leading-[1.05] tracking-tight sm:text-5xl">
+        <span className="sr-only">AskCSV, ask questions about a CSV in plain English: </span>
         Ask your data <em className="text-accent">anything.</em>
       </h1>
 

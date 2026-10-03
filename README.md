@@ -1,5 +1,9 @@
 # AskCSV
 
+Ask questions about a CSV in plain English and get the SQL, a chart and a checked answer. The SQL runs in your browser.
+
+**Live demo:** https://askcsv-seven.vercel.app
+
 Drop a CSV, or pick one of three sample datasets, and ask questions about it in plain English. AskCSV writes the SQL, runs it in your browser, draws a chart, and gives a one or two sentence answer whose numbers are checked against the result.
 
 It is for people who have a spreadsheet and a question but no time to write SQL or build a pivot table: founders looking at a billing export, ops people with a trip log, a shop owner with a sales file.

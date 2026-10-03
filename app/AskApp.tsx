@@ -472,7 +472,11 @@ export default function AskApp() {
           <button type="button" onClick={() => setSidebarOpen(true)} className="grid h-8 w-8 place-items-center rounded-lg text-ink-soft hover:bg-hover md:hidden" aria-label="Open conversations">
             <Menu size={17} />
           </button>
-          <h1 className="min-w-0 flex-1 truncate text-[14px] font-medium">{active?.title ?? 'New analysis'}</h1>
+          {active || loaded ? (
+            <h1 className="min-w-0 flex-1 truncate text-[14px] font-medium">{active?.title ?? 'New analysis'}</h1>
+          ) : (
+            <p className="min-w-0 flex-1 truncate text-[14px] font-medium">New analysis</p>
+          )}
           <ModelPicker value={model} onChange={setModel} />
           {active && (
             <div className="relative">

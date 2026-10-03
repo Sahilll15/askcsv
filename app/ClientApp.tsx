@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 function Shell() {
   return (
     <div className="flex h-dvh gap-2 p-2" aria-busy="true">
+      <h1 className="sr-only">AskCSV, ask questions about a CSV in plain English</h1>
       <div className="hidden w-64 flex-col gap-3 p-3 md:flex">
         <div className="skeleton h-6 w-28" />
         <div className="skeleton mt-6 h-4 w-16" />
