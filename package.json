@@ -9,6 +9,12 @@
     "lint": "eslint",
     "test": "node --test --experimental-strip-types --no-warnings tests/*.test.mjs"
   },
+  "browserslist": [
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 111",
+    "safari >= 16.4"
+  ],
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
     "@upstash/redis": "^1.39.0",
