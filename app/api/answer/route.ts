@@ -41,12 +41,13 @@ export async function POST(req: Request) {
 
   const openaiModel = resolveModel(body.model);
   const ask = (feedback?: string[]) =>
-    callModel(openaiModel, ({ client, model }) =>
+    callModel(openaiModel, ({ client, model, name }) =>
       client.responses.parse({
         model,
         instructions: INSTRUCTIONS,
         input: buildInput(body, feedback),
-        reasoning: { effort: 'low' },
+        // gpt-oss on Groq misread row order at 'low' (named the smallest value as the highest).
+        reasoning: { effort: name === 'groq' ? 'medium' : 'low' },
         max_output_tokens: 2000,
         text: { format: zodTextFormat(AnswerSchema, 'grounded_answer') },
       }),

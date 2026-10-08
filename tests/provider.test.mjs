@@ -19,7 +19,8 @@ test('providers picks Groq first, then OpenAI with the caller model', () => {
   assert.throws(() => providers('gpt-5.4-mini', {}), MissingKeyError);
 });
 
-test('isRetryable covers 429, 5xx and network errors only', () => {
+test('isRetryable covers 413, 429, 5xx and network errors only', () => {
+  assert.equal(isRetryable(apiError(413)), true);
   assert.equal(isRetryable(apiError(429)), true);
   assert.equal(isRetryable(apiError(503)), true);
   assert.equal(isRetryable(new OpenAI.APIConnectionError({ message: 'down' })), true);
@@ -54,4 +55,12 @@ test('withFallback does not fall back on a bad request or without a second provi
 test('withFallback returns the first provider result and model when it succeeds', async () => {
   const out = await withFallback([fake('groq', 'g-model'), fake('openai', 'o-model')], async () => 42);
   assert.deepEqual(out, { result: 42, model: 'g-model' });
+});
+
+test('withFallback moves to OpenAI when Groq rejects a request as too large (413)', async () => {
+  const out = await withFallback([fake('groq', 'g-model'), fake('openai', 'o-model')], async (p) => {
+    if (p.name === 'groq') throw apiError(413);
+    return 'ok';
+  });
+  assert.deepEqual(out, { result: 'ok', model: 'o-model' });
 });
