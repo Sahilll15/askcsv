@@ -2,7 +2,7 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { PlanRequestSchema, PlanSchema, type PlanRequest, type PlanResponse } from '../../../lib/api';
 import { guardSql } from '../../../lib/sqlGuard';
 import { readJson } from '../../server/http';
-import { openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
+import { callModel, resolveModel, upstreamError, usageOf } from '../../server/openai';
 import { clientIp, gated, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 64 * 1024;
@@ -59,16 +59,17 @@ export async function POST(req: Request) {
   if (gate instanceof Response) return gate;
   if (!gate.ok) return limited(gate);
 
-  const model = resolveModel(body.model);
   try {
-    const response = await openai().responses.parse({
-      model,
-      instructions: INSTRUCTIONS,
-      input: buildInput(body),
-      reasoning: { effort: 'low' },
-      max_output_tokens: 4000,
-      text: { format: zodTextFormat(PlanSchema, 'query_plan') },
-    });
+    const { result: response, model } = await callModel(resolveModel(body.model), ({ client, model }) =>
+      client.responses.parse({
+        model,
+        instructions: INSTRUCTIONS,
+        input: buildInput(body),
+        reasoning: { effort: 'low' },
+        max_output_tokens: 4000,
+        text: { format: zodTextFormat(PlanSchema, 'query_plan') },
+      }),
+    );
     const plan = response.output_parsed;
     if (!plan) return Response.json({ error: 'The model did not return a query. Try rephrasing.' }, { status: 502 });
 
