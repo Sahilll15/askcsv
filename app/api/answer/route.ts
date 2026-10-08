@@ -2,7 +2,7 @@ import { zodTextFormat } from 'openai/helpers/zod';
 import { AnswerRequestSchema, AnswerSchema, type AnswerRequest, type AnswerResponse } from '../../../lib/api';
 import { checkGrounding } from '../../../lib/grounding';
 import { readJson } from '../../server/http';
-import { addUsage, openai, resolveModel, upstreamError, usageOf } from '../../server/openai';
+import { addUsage, callModel, resolveModel, upstreamError, usageOf } from '../../server/openai';
 import { clientIp, gated, limited, quota } from '../../server/ratelimit';
 
 const MAX_BYTES = 256 * 1024;
@@ -39,19 +39,21 @@ export async function POST(req: Request) {
   if (gate instanceof Response) return gate;
   if (!gate.ok) return limited(gate);
 
-  const model = resolveModel(body.model);
+  const openaiModel = resolveModel(body.model);
   const ask = (feedback?: string[]) =>
-    openai().responses.parse({
-      model,
-      instructions: INSTRUCTIONS,
-      input: buildInput(body, feedback),
-      reasoning: { effort: 'low' },
-      max_output_tokens: 2000,
-      text: { format: zodTextFormat(AnswerSchema, 'grounded_answer') },
-    });
+    callModel(openaiModel, ({ client, model }) =>
+      client.responses.parse({
+        model,
+        instructions: INSTRUCTIONS,
+        input: buildInput(body, feedback),
+        reasoning: { effort: 'low' },
+        max_output_tokens: 2000,
+        text: { format: zodTextFormat(AnswerSchema, 'grounded_answer') },
+      }),
+    );
 
   try {
-    let response = await ask();
+    let { result: response, model } = await ask();
     let usage = usageOf(model, response.usage);
     let answer = response.output_parsed?.answer?.trim() ?? '';
     let grounding = checkGrounding(answer, body.rows, [body.question]);
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
     // One corrective retry, then ship it with the flag so the UI can warn.
     if (!grounding.ok) {
       retried = true;
-      response = await ask(grounding.unsupported);
+      ({ result: response, model } = await ask(grounding.unsupported));
       usage = addUsage(usage, usageOf(model, response.usage));
       const second = response.output_parsed?.answer?.trim() ?? '';
       const secondCheck = checkGrounding(second, body.rows, [body.question]);

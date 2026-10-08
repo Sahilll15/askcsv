@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { DEFAULT_MODEL, MODELS, type Usage } from '../../lib/api';
+import { MissingKeyError, providers, withFallback, type Provider } from './provider';
 
 // USD per 1M tokens, standard tier.
 const PRICES: Record<string, { input: number; output: number }> = {
@@ -7,20 +8,12 @@ const PRICES: Record<string, { input: number; output: number }> = {
   'gpt-5.5': { input: 5, output: 30 },
 };
 
-let client: OpenAI | null = null;
-
-export function openai() {
-  if (!process.env.OPENAI_API_KEY) throw new MissingKeyError();
-  client ??= new OpenAI({ maxRetries: 2, timeout: 45_000 });
-  return client;
+/** Calls Groq when configured, falling back to OpenAI with `openaiModel`. Returns the model that answered. */
+export function callModel<T>(openaiModel: string, call: (p: Provider) => Promise<T>) {
+  return withFallback(providers(openaiModel), call);
 }
 
-export class MissingKeyError extends Error {
-  constructor() {
-    super('The server is missing OPENAI_API_KEY.');
-  }
-}
-
+/** The OpenAI model to use: the client's pick from the whitelist, else OPENAI_MODEL. */
 export function resolveModel(requested?: string) {
   const fallback = process.env.OPENAI_MODEL || DEFAULT_MODEL;
   return MODELS.some((m) => m.id === requested) ? requested! : fallback;
@@ -29,7 +22,8 @@ export function resolveModel(requested?: string) {
 export function usageOf(model: string, usage?: { input_tokens?: number; output_tokens?: number } | null): Usage {
   const inputTokens = usage?.input_tokens ?? 0;
   const outputTokens = usage?.output_tokens ?? 0;
-  const price = PRICES[model] ?? PRICES[DEFAULT_MODEL];
+  // Models without a price (the Groq free tier) count as zero.
+  const price = PRICES[model] ?? { input: 0, output: 0 };
   return { inputTokens, outputTokens, costUsd: (inputTokens * price.input + outputTokens * price.output) / 1e6 };
 }
 
